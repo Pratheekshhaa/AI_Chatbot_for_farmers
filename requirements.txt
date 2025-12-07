@@ -1,0 +1,15 @@
+streamlit
+langchain
+langchain_community
+langchain_ollama
+chromadb
+pypdf
+python-dotenv
+googletrans==4.0.0-rc1
+gTTS
+Pillow
+opencv-python
+requests
+pandas
+openai-whisper
+numpy
