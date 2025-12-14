@@ -12,6 +12,8 @@ from PIL import Image
 from gtts import gTTS
 import whisper
 from langchain_ollama import ChatOllama
+from tensorflow.keras.models import load_model
+import tensorflow as tf
 
 # ===========================
 # CONFIG
@@ -31,7 +33,6 @@ LANG_CONFIG = {
 # LOAD MODELS
 # ===========================
 
-@st.cache_resource
 def get_llm():
     return ChatOllama(
         model=LLM_MODEL,
@@ -44,8 +45,31 @@ def get_whisper():
     return whisper.load_model("tiny")
 
 @st.cache_resource
+def load_disease_model():
+    model = load_model("disease_model.h5")
+    return model
+
+PLANT_LABELS = {
+    0: 'Alstonia Scholaris',
+    1: 'Arjun',
+    2: 'Bael',
+    3: 'Basil',
+    4: 'Chinar',
+    5: 'Gauva',
+    6: 'Jamun',
+    7: 'Jatropha',
+    8: 'Lemon',
+    9: 'Mango',
+    10: 'Pomegranate',
+    11: 'Pongamia Pinnata'
+}
+
+# ===========================
+# RAG KNOWLEDGE (unchanged)
+# ===========================
+
+@st.cache_resource
 def load_knowledge():
-    """Load RAG data (subsidy + CSVs)."""
     subsidy_path = os.path.join(DATA_DIR, "subsidy.txt")
     subsidy_text = ""
     if os.path.exists(subsidy_path):
@@ -70,10 +94,6 @@ def load_knowledge():
         "rainfall_df": load_csv("Indian Rainfall Dataset.csv"),
     }
 
-
-# ===========================
-# RAG UTILITIES
-# ===========================
 
 STOPWORDS = {
     "the","is","are","was","were","for","and","with","to","in","on","at","of",
@@ -102,16 +122,40 @@ def search_text(q, textdata, top=6):
     return "\n".join([ln for _, ln in scored[:top]])
 
 def search_df(q, df, label, top=6):
-    if df is None:
+    # If dataframe missing or invalid
+    if df is None or len(df) == 0:
         return ""
+
+    # __combined__ column missing → skip safely
+    if "__combined__" not in df.columns:
+        return ""
+
     keys = keywords(q)
-    mask = False
+
+    # Build mask
+    mask = pd.Series(False, index=df.index)
+
     for k in keys:
+        # OR together all matches
         mask = mask | df["__combined__"].str.contains(k, case=False, na=False)
+
+    # If mask has no True values → no match
+    if not mask.any():
+        return ""
+
+    # If mask somehow becomes a single boolean (rare CSV issue)
+    if isinstance(mask, bool):
+        return ""
+
+    # Now it's safe to index
     hits = df[mask].head(top)
+
     if hits.empty:
         return ""
+
     return f"--- {label} ---\n" + "\n".join(hits["__combined__"].tolist())
+
+
 
 def build_context(q):
     data = load_knowledge()
@@ -135,9 +179,8 @@ def build_context(q):
 
     return "\n\n".join(parts)
 
-
 # ===========================
-# WEATHER
+# WEATHER (unchanged)
 # ===========================
 
 def get_weather(city):
@@ -178,35 +221,23 @@ def fert_reco(crop, w):
 
 
 # ===========================
-# VOICE TRANSCRIPTION — NO FFMPEG
+# VOICE TRANSCRIPTION (unchanged)
 # ===========================
 
 def transcribe(audio_bytes):
-    """
-    Convert microphone audio → numpy → 16kHz mono → Whisper.
-    No FFmpeg required.
-    """
     model = get_whisper()
-
-    # Load raw audio bytes with soundfile
     audio_np, sr = sf.read(io.BytesIO(audio_bytes))
-
-    # Convert stereo → mono
     if audio_np.ndim > 1:
         audio_np = np.mean(audio_np, axis=1)
-
-    # Resample to 16kHz for Whisper
     if sr != 16000:
         audio_np = librosa.resample(audio_np, orig_sr=sr, target_sr=16000)
-
     audio_np = audio_np.astype(np.float32)
-
     result = model.transcribe(audio_np)
     return result.get("text", "")
 
 
 # ===========================
-# LEAF ANALYSIS
+# BASIC LEAF FEATURES
 # ===========================
 
 def leaf_basic(file):
@@ -222,13 +253,63 @@ def leaf_basic(file):
         else:
             status = "Leaf shows mixed stress."
 
-        return f"{status}\nRGB avg: {int(r)}, {int(g)}, {int(b)}"
+        return img, f"{status}\nRGB avg: {int(r)}, {int(g)}, {int(b)}"
     except Exception as e:
-        return f"Leaf analysis error: {e}"
+        return None, f"Leaf analysis error: {e}"
 
 
 # ===========================
-# ANSWER GENERATION
+# ADVANCED LEAF PROMPT
+# ===========================
+
+def advanced_leaf_prompt(basic, predicted_plant, lang_name):
+    return f"""
+You are India's top agriculture plant pathologist.
+
+Analyze the leaf condition described below and give a FULL DIAGNOSIS.
+
+--------------------------
+PLANT TYPE (Predicted): {predicted_plant}
+
+LEAF STATUS:
+{basic}
+
+Now give a detailed report in {lang_name} including:
+
+🌿 **1. Disease Probability (0–100%)**
+Based on color, brightness, and common symptoms.
+
+🩸 **2. Severity Grade**
+Choose one:
+Grade A — Mild
+Grade B — Moderate
+Grade C — Severe
+Grade D — Critical
+
+🧫 **3. Possible Issues**
+Give 2–3 possibilities:
+- Nutrient deficiency
+- Fungal infection
+- Bacterial infection
+- Pest attack
+
+🧪 **4. Likely Cause**
+
+💊 **5. Immediate Treatment**
+Include fertilizers OR fungicides/pesticides (Indian brands allowed).
+
+🛡 **6. Prevention for 7 Days**
+
+🚜 **7. When to Seek Expert Help**
+Specific warning signs.
+
+Write clearly in {lang_name}.
+--------------------------
+"""
+
+
+# ===========================
+# ANSWER GENERATION (unchanged)
 # ===========================
 
 def answer_multilingual(q, city, crop, lang_name):
@@ -244,9 +325,9 @@ def answer_multilingual(q, city, crop, lang_name):
     prompt = (
         "You are 'Farmer Friend', an Indian agriculture expert.\n"
         f"Your response language must be ONLY: {lang_name}.\n"
-        "- If Hindi → use Devanagari script.\n"
-        "- If Kannada → use Kannada script.\n"
-        "- If English → use English.\n"
+        "- If Hindi → Devanagari.\n"
+        "- If Kannada → Kannada script.\n"
+        "- If English → English.\n"
         "Never mix languages.\n\n"
         f"CONTEXT:\n{context}\n\n"
         f"QUESTION:\n{q}\n\n"
@@ -277,7 +358,7 @@ def main():
     tab1, tab2 = st.tabs(["💬 Chat / Voice", "🌿 Leaf Analysis"])
 
     # -----------------------------------
-    # TAB 1 — CHAT + VOICE
+    # TAB 1 — CHAT + VOICE (UNTOUCHED)
     # -----------------------------------
     with tab1:
 
@@ -314,26 +395,44 @@ def main():
                 st.error("TTS audio failed.")
 
     # -----------------------------------
-    # TAB 2 — LEAF ANALYSIS
+    # TAB 2 — ADVANCED LEAF ANALYSIS
     # -----------------------------------
     with tab2:
-        st.subheader("Leaf Image Analysis")
-        img = st.file_uploader("Upload leaf image", type=["jpg","png","jpeg"])
+        st.subheader("🌿 Advanced Leaf Image Analysis")
+        img_file = st.file_uploader("Upload leaf image", type=["jpg","png","jpeg"])
 
-        if img:
-            st.image(Image.open(img), width=450)
+        if img_file:
+            st.image(Image.open(img_file), width=450)
+
             if st.button("Analyze Leaf"):
-                basic = leaf_basic(img)
-                st.markdown("### Basic Analysis")
+                model = load_disease_model()
+
+                # BASIC ANALYSIS
+                img, basic = leaf_basic(img_file)
+                st.markdown("### 📌 Basic Leaf Reading")
                 st.write(basic)
 
+                # PREPARE FOR MODEL PREDICTION
+                im = img.resize((224,224))
+                arr = np.array(im) / 255.0
+                arr = np.expand_dims(arr, axis=0)
+
+                pred = model.predict(arr)
+                plant_idx = np.argmax(pred)
+                plant_name = PLANT_LABELS[plant_idx]
+
+                st.markdown("### 🌱 Detected Plant Type")
+                st.write(plant_name)
+
+                # ADVANCED LLM DIAGNOSIS
+                st.markdown("### 🧠 Expert Diagnosis")
                 llm = get_llm()
-                detail = llm.invoke(
-                    f"You are a crop disease expert.\nLeaf status: {basic}\nExplain in {lang_name}:"
-                ).content
-                st.markdown("### Expert Insight")
+                prompt = advanced_leaf_prompt(basic, plant_name, lang_name)
+                detail = llm.invoke(prompt).content
+
                 st.write(detail)
 
 
 if __name__ == "__main__":
+    st.write("Using LLM URL:", OLLAMA_URL)
     main()

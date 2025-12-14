@@ -1,0 +1,46 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+venv/
+
+# =========================
+# Large datasets (DO NOT PUSH)
+# =========================
+data/plant_disease/
+data/data_core.csv
+data/Indian Rainfall Dataset District-wise Daily*.csv
+data/mandi_data_2000_rows.csv
+
+# =========================
+# Vector stores / embeddings
+# =========================
+vectors/
+*.faiss
+*.pkl
+
+# =========================
+# ML models (optional to ignore)
+# =========================
+*.h5
+*.keras
+
+# =========================
+# Streamlit / runtime
+# =========================
+.streamlit/
+logs/
+*.log
+
+# =========================
+# OS / Editor junk
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
