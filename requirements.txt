@@ -1,15 +1,29 @@
-streamlit
-langchain
-langchain_community
-langchain_ollama
-chromadb
-pypdf
+# Core App & UI
+streamlit>=1.30.0
+requests
 python-dotenv
-googletrans==4.0.0-rc1
+
+# Data Handling
+pandas
+numpy
+
+# Audio & Speech
+soundfile
+librosa
+openai-whisper
 gTTS
+
+# Image Processing
 Pillow
 opencv-python
-requests
-pandas
-openai-whisper
-numpy
+
+# LLM + RAG
+langchain
+langchain-community
+langchain-text-splitters
+langchain-ollama
+chromadb
+
+# ML / Vision Model
+tensorflow>=2.13
+keras
