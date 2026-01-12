@@ -15,9 +15,7 @@ from langchain_ollama import ChatOllama
 from tensorflow.keras.models import load_model
 import tensorflow as tf
 
-# ===========================
 # CONFIG
-# ===========================
 
 OLLAMA_URL = "http://localhost:11434"
 LLM_MODEL = "llama3.1:8b"
@@ -29,9 +27,7 @@ LANG_CONFIG = {
     "ಕನ್ನಡ (Kannada)": {"code": "kn", "name": "Kannada"},
 }
 
-# ===========================
 # LOAD MODELS
-# ===========================
 
 def get_llm():
     return ChatOllama(
@@ -64,9 +60,7 @@ PLANT_LABELS = {
     11: 'Pongamia Pinnata'
 }
 
-# ===========================
-# RAG KNOWLEDGE (unchanged)
-# ===========================
+# RAG KNOWLEDGE 
 
 @st.cache_resource
 def load_knowledge():
@@ -179,9 +173,7 @@ def build_context(q):
 
     return "\n\n".join(parts)
 
-# ===========================
-# WEATHER (unchanged)
-# ===========================
+# WEATHER
 
 def get_weather(city):
     if not city:
@@ -220,9 +212,7 @@ def fert_reco(crop, w):
     return "Weather OK → apply normal recommended fertilizer dose."
 
 
-# ===========================
-# VOICE TRANSCRIPTION (unchanged)
-# ===========================
+# VOICE TRANSCRIPTION 
 
 def transcribe(audio_bytes):
     model = get_whisper()
@@ -235,10 +225,7 @@ def transcribe(audio_bytes):
     result = model.transcribe(audio_np)
     return result.get("text", "")
 
-
-# ===========================
 # BASIC LEAF FEATURES
-# ===========================
 
 def leaf_basic(file):
     try:
@@ -258,9 +245,7 @@ def leaf_basic(file):
         return None, f"Leaf analysis error: {e}"
 
 
-# ===========================
 # ADVANCED LEAF PROMPT
-# ===========================
 
 def advanced_leaf_prompt(basic, predicted_plant, lang_name):
     return f"""
@@ -308,9 +293,7 @@ Write clearly in {lang_name}.
 """
 
 
-# ===========================
-# ANSWER GENERATION (unchanged)
-# ===========================
+# ANSWER GENERATION 
 
 def answer_multilingual(q, city, crop, lang_name):
     llm = get_llm()
